@@ -1,0 +1,169 @@
+<meta name='viewport' content='width=device-width, initial-scale=1'/><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Smart Notes App</title>
+  <style>
+    :root{--bg:#0b1220;--card:#0f2430;--accent:#00ffff;--muted:#bfecec}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,Roboto,Arial;background:linear-gradient(180deg,var(--bg),#061016);color:#eafafa;min-height:100vh;padding:28px;display:flex;align-items:flex-start;justify-content:center;}
+    .container{width:100%;max-width:980px}
+    header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+    h1{color:var(--accent);margin:0;font-size:20px}
+    .controls{display:flex;gap:8px;align-items:center}
+    input[type="text"]{padding:10px;border-radius:10px;border:none;background:#071822;color:#eafafa}
+    button{padding:10px 12px;border-radius:10px;border:none;background:var(--accent);color:#001;font-weight:700;cursor:pointer}
+    .layout{display:grid;grid-template-columns:1fr 320px;gap:18px}
+    .notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+    .note{background:var(--card);padding:12px;border-radius:10px;border:1px solid rgba(0,255,255,0.04)}
+    .note h3{margin:0 0 6px;font-size:16px}
+    .note p{margin:0;color:var(--muted);font-size:13px}
+    .sidebar{background:linear-gradient(180deg,#071722,#091a22);padding:12px;border-radius:10px}
+    textarea{width:100%;min-height:120px;padding:10px;border-radius:8px;border:none;background:#0b1b24;color:#eafafa}
+    .row{display:flex;gap:8px;margin-top:8px}
+    .small{font-size:13px;color:#aeecec}
+    .muted{color:#9fe0e0;font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🧠 Smart Notes</h1>
+      <div class="controls">
+        <input id="search" type="text" placeholder="Search notes...">
+        <button id="newBtn">+ New</button>
+        <button id="toggleTheme">Dark/Light</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <div>
+        <div id="notesList" class="notes" aria-live="polite"></div>
+      </div>
+
+      <aside class="sidebar">
+        <div class="muted">Title</div>
+        <input id="title" type="text" placeholder="Note title" />
+        <div class="muted" style="margin-top:8px">Content</div>
+        <textarea id="content" placeholder="Write your note..."></textarea>
+        <div class="row">
+          <button id="saveBtn">Save</button>
+          <button id="clearBtn">Clear</button>
+        </div>
+        <div class="small" style="margin-top:12px">Notes are saved to your browser automatically.</div>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    // Simple notes app using localStorage
+    const KEY = 'smart_notes_v1';
+    let notes = JSON.parse(localStorage.getItem(KEY) || '[]');
+    let editId = null;
+
+    // DOM
+    const notesList = document.getElementById('notesList');
+    const titleInput = document.getElementById('title');
+    const contentInput = document.getElementById('content');
+    const saveBtn = document.getElementById('saveBtn');
+    const newBtn = document.getElementById('newBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const search = document.getElementById('search');
+    const toggleTheme = document.getElementById('toggleTheme');
+
+    function saveNotes(){
+      localStorage.setItem(KEY, JSON.stringify(notes));
+    }
+
+    function renderList(filter = ''){
+      notesList.innerHTML = '';
+      const filtered = notes.filter(n => n.title.toLowerCase().includes(filter) || n.content.toLowerCase().includes(filter));
+      if(filtered.length === 0){
+        notesList.innerHTML = '<div class="muted">No notes yet. Click "New" to create one.</div>';
+        return;
+      }
+      filtered.slice().reverse().forEach(n=>{
+        const card = document.createElement('div');
+        card.className = 'note';
+        card.innerHTML = `<h3>${escapeHtml(n.title || 'Untitled')}</h3><p>${escapeHtml(n.content.slice(0,120))}</p>
+          <div style="margin-top:8px;display:flex;gap:6px">
+            <button data-id="${n.id}" class="editBtn">Edit</button>
+            <button data-id="${n.id}" class="delBtn">Delete</button>
+          </div>`;
+        notesList.appendChild(card);
+      });
+      // attach events
+      document.querySelectorAll('.editBtn').forEach(b => b.addEventListener('click', e=>{
+        const id = e.target.dataset.id;
+        startEdit(id);
+      }));
+      document.querySelectorAll('.delBtn').forEach(b => b.addEventListener('click', e=>{
+        const id = e.target.dataset.id;
+        if(confirm('Delete this note?')) deleteNote(id);
+      }));
+    }
+
+    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+    function startEdit(id){
+      const n = notes.find(x => x.id === id);
+      if(!n) return;
+      editId = id;
+      titleInput.value = n.title;
+      contentInput.value = n.content;
+    }
+
+    function deleteNote(id){
+      notes = notes.filter(x => x.id !== id);
+      saveNotes(); renderList(search.value || '');
+    }
+
+    saveBtn.addEventListener('click', () => {
+      const t = titleInput.value.trim();
+      const c = contentInput.value.trim();
+      if(!t && !c){ alert('Add title or content'); return; }
+      if(editId){
+        notes = notes.map(n => n.id === editId ? {...n, title:t, content:c, updated:Date.now()} : n);
+      } else {
+        notes.push({ id: Date.now().toString(36), title:t, content:c, created:Date.now() });
+      }
+      saveNotes(); renderList(search.value || ''); clearInputs();
+    });
+
+    newBtn.addEventListener('click', () => { editId = null; clearInputs(); });
+
+    clearBtn.addEventListener('click', () => { if(confirm('Clear form?')) clearInputs(); });
+
+    function clearInputs(){ titleInput.value=''; contentInput.value=''; editId=null; }
+
+    function deleteAllNotes(){
+      if(confirm('Delete ALL notes?')){
+        notes = []; saveNotes(); renderList();
+      }
+    }
+
+    search.addEventListener('input', () => renderList(search.value.toLowerCase()));
+
+    // simple theme toggle
+    toggleTheme.addEventListener('click', () => {
+      const root = document.documentElement;
+      if(root.style.getPropertyValue('--bg') === '#0b1220'){
+        root.style.setProperty('--bg', '#f4f7fb');
+        root.style.setProperty('--card', '#ffffff');
+        root.style.setProperty('--accent', '#0b6bff');
+        document.body.style.color = '#061224';
+      } else {
+        root.style.setProperty('--bg', '#0b1220');
+        root.style.setProperty('--card', '#0f2430');
+        root.style.setProperty('--accent', '#00ffff');
+        document.body.style.color = '#eafafa';
+      }
+    });
+
+    // initial render
+    renderList();
+
+  </script>
+</body>
+</html>
